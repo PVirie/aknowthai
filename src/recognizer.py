@@ -10,6 +10,7 @@ def split_output(lstm_output, batches, total_classes):
 
 
 def logit_to_label(logits):
+    """ activated labels must be forced sparse! """
     return tf.nn.softmax(logits)
 
 
@@ -19,11 +20,13 @@ def build_shifting_graph(alphas, identity, shift_template):
 
 def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, batches, total_characters, total_classes):
     """ total_characters = true_character_number + 1, the last slot is for terminal penalty """
-    """ true_labels of int type can be expaned into [total_characters, total_classes] via tf.one_hot """
-    """ logits [batches, total_classes] is NOT one hots """
-    """ weights [batches, total_characters, 1] is NOT one hots """
-    """ alphas [batches, 1] is NOT one hots """
-    """ shift [batches, total_characters, total_characters] is NOT one hots """
+    """ true_labels of integer type can be expaned into [total_characters, total_classes] via tf.one_hot """
+    """ logits [batches, total_classes] """
+    """ weights [batches, total_characters, 1] """
+    """ alphas [batches, 1]  """
+    """ shift [batches, total_characters, total_characters] """
+    """ cost for each item in batch = \sum_i {c_0*(1-\alpha_i) + \alpha_i.prediction_error} + c_1*total_weight_at_last_step  """
+    """ c_1 is some high value, 1 >= c_0 >= (total_characters - num_characters_in_item)/total_characters """
 
     new_weights = tf.batch_matmul(shift, weights)
     y = tf.reshape(tf.one_hot(true_labels, depth=total_classes, dtype=tf.float32, axis=-1), [1, total_characters, total_classes])

@@ -1,11 +1,12 @@
 import gen
 import util
 import numpy as np
+import network as nn
 
 
 def prepare_input_tensors(words, imgs):
     """convert all to numpy array"""
-    w = np.zeros([gen.get_max_word_length(), len(words)])
+    w = np.zeros([gen.get_max_word_length(), len(words)], type=np.int32)
     for i in xrange(len(words)):
         arr = np.array(gen.unicodes_to_indices(words[i]))
         w[0:arr.shape[0], i] = arr

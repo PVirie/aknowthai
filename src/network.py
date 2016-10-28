@@ -2,14 +2,15 @@ import tensorflow as tf
 import numpy as np
 
 
-def final_layer(lstm_output, w):
-    return tf.matmul(lstm_output, w)
+def final_layer(lstm_output, w, batches, input_size, output_size):
+    """ (batch, data_length, input_size) * (input_size, [one-hots, alpha]) -> (batch, data_length, [one-hots, alpha]) """
+    return tf.reshape(tf.matmul(tf.reshape(lstm_output, [-1, input_size]), w), [batches, -1, output_size])
 
 
 def split_output(final_output, batches, total_classes):
-    """ (batch, [one-hots, alpha]) ->  (batch, 1), (batch, one-hots)"""
-    alphas = tf.slice(final_output, [0, total_classes], [batches, 1])
-    logits = tf.slice(final_output, [0, 0], [batches, total_classes])
+    """ (batch, data_length, [one-hots, alpha]) ->  (batch, data_length, 1), (batch, data_length, one-hots)"""
+    alphas = tf.slice(final_output, [0, 0, total_classes], [batches, -1, 1])
+    logits = tf.slice(final_output, [0, 0, 0], [batches, -1, total_classes])
     return alphas, logits
 
 
@@ -57,8 +58,8 @@ class Network:
         batches = data_shape[0]
         input_size = data_shape[2]
         input_sequence_length = data_shape[1]
-        self.gpu_inputs = tf.placeholder(tf.float32, data_shape)
-        self.gpu_labels = tf.placeholder(tf.int32, labels_shape)
+        self.gpu_inputs = tf.placeholder(tf.float32)
+        self.gpu_labels = tf.placeholder(tf.int32)
         self.sharpeness = tf.placeholder(tf.float32)
 
         lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, state_is_tuple=False)
@@ -76,19 +77,21 @@ class Network:
 
         W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.1, dtype=tf.float32)
 
-        state = self.stacked_lstm.zero_state(data_shape[0], tf.float32)
-        output = tf.placeholder(dtype=tf.float32, shape=[batches, self.stacked_lstm.output_size])
+        output, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.gpu_inputs, dtype=tf.float32, time_major=False)
+        preAlphas, logits = split_output(final_layer(output, W, batches, input_size, total_classes + 1), batches, total_classes)
+
+        self.alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
+        self.classes = logit_to_label(logits)
 
         sum_cost = tf.Variable(0, trainable=False, dtype=tf.float32)
         with tf.variable_scope("lstm") as scope:
             for i in range(input_sequence_length):
                 if i > 0:
                     scope.reuse_variables()
-                output, state = self.stacked_lstm(tf.reshape(tf.slice(self.gpu_inputs, [0, i, 0], [batches, 1, input_size]), [batches, input_size]), state)
-                preAlphas, logits = split_output(final_layer(output, W), batches, total_classes)
-                alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
-                shift_mat = build_shifting_graph(alphas, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
-                weights, cost = build_step_cost_function(1.0, shift_mat, alphas, weights, logits, self.gpu_labels, batches, total_characters, total_classes)
+                logits_i = tf.reshape(tf.slice(logits, [0, i, 0], [batches, 1, total_classes]), [batches, total_classes])
+                alphas_i = tf.reshape(tf.slice(self.alphas, [0, i, 0], [batches, 1, 1]), [batches, 1])
+                shift_mat = build_shifting_graph(alphas_i, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
+                weights, cost = build_step_cost_function(1.0, shift_mat, alphas_i, weights, logits_i, self.gpu_labels, batches, total_characters, total_classes)
                 sum_cost = sum_cost + cost
 
         self.overall_cost = sum_cost
@@ -106,11 +109,27 @@ class Network:
 
     def train(self, data, labels, session_name, max_iteration):
         for step in xrange(max_iteration):
-            _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: data, self.gpu_labels: labels, self.sharpeness: [step * 1.0]})
+            _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: data, self.gpu_labels: labels, self.sharpeness: [step * 100.0 / max_iteration]})
             print loss
         self.saver.save(self.sess, "../artifacts/" + session_name)
 
     def load_session(self, session_name):
         self.saver.restore(self.sess, "../artifacts/" + session_name)
 
-    def eval(self, data):
+    def eval(self, data, labels):
+        classes, alphas = self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data, self.sharpeness: [100.0]})
+        # now get only classess corresponding to high alphas
+        index_output = np.argmax(classes, axis=2)
+        masked = np.reshape(alphas > 0.5, (alphas.shape[0], alphas.shape[1]))
+
+        count = 0
+        correct = 0
+        for b in xrange(index_output.shape[0]):
+            lc = 0
+            for c in xrange(index_output.shape[1]):
+                if(masked[b, c]):
+                    correct += 1 if labels[b, lc] == index_output[b, c] else 0
+                    lc += 1
+                    count += 1
+
+        print "Percent correct = ", correct * 100.0 / count

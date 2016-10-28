@@ -49,54 +49,68 @@ def build_tailing_cost_function(c1, weights, batches, total_characters):
     return tf.reduce_sum(tf.slice(weights, [0, total_characters - 1, 0], [batches, 1, 1])) * c1
 
 
-def train(data, labels, total_classes, session_name):
-    total_characters = data.shape[2]
-    batches = data.shape[0]
-    input_size = data.shape[1]
-    gpu_inputs = tf.placeholder(tf.float32, data.shape)
-    gpu_labels = tf.placeholder(tf.int32, labels.shape)
+class Network:
 
-    lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, state_is_tuple=False)
-    stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2, state_is_tuple=False)
+    def __init__(self, data_shape, labels_shape, total_classes):
+        self.sess = tf.Session()
+        total_characters = labels_shape[1]
+        batches = data_shape[0]
+        input_size = data_shape[2]
+        input_sequence_length = data_shape[1]
+        self.gpu_inputs = tf.placeholder(tf.float32, data_shape)
+        self.gpu_labels = tf.placeholder(tf.int32, labels_shape)
+        self.sharpeness = tf.placeholder(tf.float32)
 
-    r12340 = np.arange(1, total_characters + 1, 1, dtype=np.int32)
-    r12340[total_characters - 1] = 0
-    shift = -np.identity(total_characters) + np.identity(total_characters)[:, r12340]
-    shift[0, total_characters - 1] = 0
-    shift[total_characters - 1, total_characters - 1] = 0
+        lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, state_is_tuple=False)
+        self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2, state_is_tuple=False)
 
-    w = np.zeros((batches, total_characters, 1))
-    w[:, 0] = 1.0
-    weights = tf.Variable(w, trainable=False, dtype=tf.float32)
+        r12340 = np.arange(1, total_characters + 1, 1, dtype=np.int32)
+        r12340[total_characters - 1] = 0
+        shift = -np.identity(total_characters) + np.identity(total_characters)[:, r12340]
+        shift[0, total_characters - 1] = 0
+        shift[total_characters - 1, total_characters - 1] = 0
 
-    W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.1, dtype=tf.float32)
+        w = np.zeros((batches, total_characters, 1))
+        w[:, 0] = 1.0
+        weights = tf.Variable(w, trainable=False, dtype=tf.float32)
 
-    state = stacked_lstm.zero_state(data.shape[0], tf.float32)
-    output = tf.placeholder(dtype=tf.float32, shape=[batches, stacked_lstm.output_size])
+        W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.1, dtype=tf.float32)
 
-    sum_cost = tf.Variable(0, trainable=False, dtype=tf.float32)
-    with tf.variable_scope("lstm") as scope:
-        for i in range(total_characters):
-            if i > 0:
-                scope.reuse_variables()
-            output, state = stacked_lstm(tf.reshape(tf.slice(gpu_inputs, [0, 0, i], [batches, input_size, 1]), [batches, input_size]), state)
-            preAlphas, logits = split_output(final_layer(output, W), batches, total_classes)
-            alphas = make_prob(preAlphas)
-            shift_mat = build_shifting_graph(alphas, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
-            weights, cost = build_step_cost_function(1.0, shift_mat, alphas, weights, logits, gpu_labels, batches, total_characters, total_classes)
-            sum_cost = sum_cost + cost
+        state = self.stacked_lstm.zero_state(data_shape[0], tf.float32)
+        output = tf.placeholder(dtype=tf.float32, shape=[batches, self.stacked_lstm.output_size])
 
-    overall_cost = sum_cost + build_tailing_cost_function(10000.0, weights, batches, total_characters)
+        sum_cost = tf.Variable(0, trainable=False, dtype=tf.float32)
+        with tf.variable_scope("lstm") as scope:
+            for i in range(input_sequence_length):
+                if i > 0:
+                    scope.reuse_variables()
+                output, state = self.stacked_lstm(tf.reshape(tf.slice(self.gpu_inputs, [0, i, 0], [batches, 1, input_size]), [batches, input_size]), state)
+                preAlphas, logits = split_output(final_layer(output, W), batches, total_classes)
+                alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
+                shift_mat = build_shifting_graph(alphas, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
+                weights, cost = build_step_cost_function(1.0, shift_mat, alphas, weights, logits, self.gpu_labels, batches, total_characters, total_classes)
+                sum_cost = sum_cost + cost
 
-    training_op = tf.train.AdagradOptimizer(0.001).minimize(overall_cost)
+        self.overall_cost = sum_cost
+        # + build_tailing_cost_function(10000.0, weights, batches, total_characters)
 
-    # Before starting, initialize the variables.  We will 'run' this first.
-    init = tf.initialize_all_variables()
+        self.training_op = tf.train.AdagradOptimizer(0.001).minimize(self.overall_cost)
 
-    # Launch the graph.
-    sess = tf.Session()
-    sess.run(init)
+        self.saver = tf.train.Saver()
 
-    for step in xrange(1000):
-        _, loss = sess.run((training_op, overall_cost), feed_dict={gpu_inputs: data, gpu_labels: labels})
-        print loss
+        # Before starting, initialize the variables.  We will 'run' this first.
+        init = tf.initialize_all_variables()
+
+        # Launch the graph.
+        self.sess.run(init)
+
+    def train(self, data, labels, session_name, max_iteration):
+        for step in xrange(max_iteration):
+            _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: data, self.gpu_labels: labels, self.sharpeness: [step * 1.0]})
+            print loss
+        self.saver.save(self.sess, "../artifacts/" + session_name)
+
+    def load_session(self, session_name):
+        self.saver.restore(self.sess, "../artifacts/" + session_name)
+
+    def eval(self, data):

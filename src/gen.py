@@ -6,6 +6,8 @@ from PIL import ImageFont
 from PIL import Image
 from PIL import ImageDraw
 from random import randint
+import util
+import numpy as np
 
 max_word_length_index = 0
 max_word_length = 0
@@ -71,6 +73,18 @@ def get_tuples(indices=range(100)):
         words.append(w)
         imgs.append(m)
     return words, imgs
+
+
+def prepare_input_tensors(words, imgs):
+    """convert all to numpy array"""
+    m = np.ndarray([len(imgs), imgs[0].size[0], imgs[0].size[1]])
+    for i in xrange(len(imgs)):
+        m[i, ...] = np.transpose(util.image_to_invFC1(imgs[i]))
+    w = np.zeros([len(words), get_max_word_length()], dtype=np.int32)
+    for i in xrange(len(words)):
+        arr = np.array(unicodes_to_indices(words[i]))
+        w[i, 0:arr.shape[0]] = arr
+    return w, m
 
 
 if __name__ == "__main__":

@@ -2,10 +2,10 @@ import tensorflow as tf
 import numpy as np
 
 
-def final_layer(lstm_output, w, input_size, output_size):
+def final_layer(lstm_output, w, b, input_size, output_size):
     """ (batch, data_length, input_size) * (input_size, [one-hots, alpha]) -> (batch, data_length, [one-hots, alpha]) """
     batches = tf.shape(lstm_output)[0]
-    return tf.reshape(tf.matmul(tf.reshape(lstm_output, [-1, input_size]), w), [batches, -1, output_size])
+    return tf.reshape(tf.matmul(tf.reshape(lstm_output, [-1, input_size]), w), [batches, -1, output_size]) + b
 
 
 def split_output(final_output, total_classes):
@@ -39,6 +39,7 @@ def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, to
     """ shift [batches, total_characters, total_characters] """
     """ cost for each item in batch = \sum_i {c_0*(1-\alpha_i) + \alpha_i.prediction_error} + c_1*total_weight_at_last_step  """
     """ c_1 is some high value, 1 >= c_0 >= (total_characters - num_characters_in_item)/total_characters """
+    """ mask [batches, total_characters, 1] """
 
     size = tf.shape(weights)
     batches = size[0]
@@ -46,7 +47,8 @@ def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, to
     new_weights = tf.batch_matmul(shift, weights)
     y = tf.reshape(tf.one_hot(true_labels, depth=total_classes, dtype=tf.float32, axis=-1), [batches, total_characters, total_classes])
     z = tf.reshape(tf.nn.log_softmax(logits), [batches, 1, total_classes])
-    delta = tf.mul(new_weights, -tf.mul(y, z))
+    mask = tf.select(tf.greater(true_labels, 0), tf.ones([batches, total_characters, 1], dtype=tf.float32), tf.zeros([batches, total_characters, 1], dtype=tf.float32))
+    delta = tf.mul(mask, tf.mul(new_weights, -tf.mul(y, z)))
     cost = tf.reduce_sum(delta) + tf.reduce_sum(1 - alphas) * c0
     return new_weights, cost
 
@@ -74,9 +76,10 @@ class Network:
         with tf.variable_scope("lstm"):
             lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, state_is_tuple=False)
             self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2, state_is_tuple=False)
-            W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.1, dtype=tf.float32)
+            W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.01, dtype=tf.float32)
+            b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.gpu_inputs, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
-            preAlphas, logits = split_output(final_layer(output, W, input_size, total_classes + 1), total_classes)
+            preAlphas, logits = split_output(final_layer(output, W, b, input_size, total_classes + 1), total_classes)
             self.alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
             self.classes = logit_to_label(logits)
 
@@ -123,7 +126,7 @@ class Network:
             for b in xrange(total_batches):
                 db = data[(b * batch_size):((b + 1) * batch_size), ...]
                 lb = labels[(b * batch_size):((b + 1) * batch_size), ...]
-                _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb, self.sharpeness: [step * 100.0 / max_iteration]})
+                _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb, self.sharpeness: [1.0]})
                 sum_loss += loss
             print sum_loss / total_batches
 
@@ -136,4 +139,4 @@ class Network:
         self.saver.restore(self.sess, tf.train.latest_checkpoint("../artifacts/"))
 
     def scan(self, data, labels):
-        return self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data, self.sharpeness: [100.0]})
+        return self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data, self.sharpeness: [1.0]})

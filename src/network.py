@@ -135,21 +135,5 @@ class Network:
     def load_last(self):
         self.saver.restore(self.sess, tf.train.latest_checkpoint("../artifacts/"))
 
-    def eval(self, data, labels):
-        classes, alphas = self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data, self.sharpeness: [100.0]})
-        # now get only classess corresponding to high alphas
-        index_output = np.argmax(classes, axis=2)
-        masked = np.reshape(alphas > 0.5, (alphas.shape[0], alphas.shape[1]))
-
-        count = 0
-        correct = 0
-        for b in xrange(index_output.shape[0]):
-            lc = 0
-            for c in xrange(index_output.shape[1]):
-                if(masked[b, c]):
-                    if(lc < labels.shape[1]):
-                        correct += 1 if labels[b, lc] == index_output[b, c] else 0
-                        lc += 1
-                    count += 1
-
-        print "Percent correct = ", correct * 100.0 / count
+    def scan(self, data, labels):
+        return self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data, self.sharpeness: [100.0]})

@@ -1,5 +1,6 @@
 import numpy as np
 from PIL import Image
+import matplotlib.pyplot as plt
 
 
 def image_to_numpy(img):
@@ -20,3 +21,8 @@ def image_to_invFC1(img):
 
 def numpy_to_image(mat):
     return Image.fromarray(mat * 255.0, 'F')
+
+
+def plot_1D(mat):
+    plt.plot(xrange(mat.shape[0]), mat, 'ro')
+    plt.show()

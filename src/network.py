@@ -23,7 +23,7 @@ def logit_to_label(logits):
 
 def make_prob(preAlphas):
     """ preAlphas will be normalized into range [0, 1] """
-    return tf.sigmoid(preAlphas)
+    return tf.sigmoid(preAlphas - 1)
 
 
 def build_shifting_graph(alphas, identity, shift_template):
@@ -74,12 +74,12 @@ class Network:
         self.sum_cost = tf.placeholder(tf.float32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, state_is_tuple=False)
-            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2, state_is_tuple=False)
-            W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.01, dtype=tf.float32)
-            b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)
+            lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size)
+            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
+            self.W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.01, dtype=tf.float32)
+            self.b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.gpu_inputs, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
-            preAlphas, logits = split_output(final_layer(output, W, b, input_size, total_classes + 1), total_classes)
+            preAlphas, logits = split_output(final_layer(output, self.W, self.b, input_size, total_classes + 1), total_classes)
             self.alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
             self.classes = logit_to_label(logits)
 
@@ -106,7 +106,7 @@ class Network:
         self.overall_cost = sum_cost
         # + build_tailing_cost_function(10000.0, weights)
 
-        self.training_op = tf.train.AdagradOptimizer(0.01).minimize(self.overall_cost, var_list=lstm_scope)
+        self.training_op = tf.train.AdagradOptimizer(0.1).minimize(self.overall_cost, var_list=lstm_scope)
 
         self.saver = tf.train.Saver(var_list=lstm_scope, keep_checkpoint_every_n_hours=1)
 

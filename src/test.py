@@ -6,7 +6,7 @@ import util
 
 def eval(neural_net, data, labels):
     classes, alphas = neural_net.scan(data, labels)
-    util.plot_1D(alphas[0])
+    util.plot_1D(alphas[5])
 
     # now get only classess corresponding to high alphas
     index_output = np.argmax(classes, axis=2)

@@ -77,6 +77,7 @@ def get_tuples(indices=range(100)):
 
 def prepare_input_tensors(words, imgs):
     """convert all to numpy array"""
+    """unicode for thai starts at index 1 not 0"""
     m = np.ndarray([len(imgs), imgs[0].size[0], imgs[0].size[1]])
     for i in xrange(len(imgs)):
         m[i, ...] = np.transpose(util.image_to_invFC1(imgs[i]))

@@ -23,11 +23,11 @@ def logit_to_label(logits):
 
 def make_prob(preAlphas):
     """ preAlphas will be normalized into range [0, 1] """
-    return tf.sigmoid(preAlphas - 1)
+    return tf.sigmoid(preAlphas)
 
 
 def build_shifting_graph(alphas, identity, shift_template):
-    return identity + tf.mul(tf.reshape(alphas, [-1, 1, 1]), shift_template)
+    return identity + tf.mul(alphas, shift_template)
 
 
 def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, total_classes):
@@ -35,21 +35,21 @@ def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, to
     """ true_labels of integer type can be expaned into [batches, total_characters, total_classes] via tf.one_hot """
     """ logits [batches, total_classes] """
     """ weights [batches, total_characters, 1] """
-    """ alphas [batches, 1]  """
+    """ alphas [batches, 1, 1]  """
     """ shift [batches, total_characters, total_characters] """
     """ cost for each item in batch = \sum_i {c_0*(1-\alpha_i) + \alpha_i.prediction_error} + c_1*total_weight_at_last_step  """
-    """ c_1 is some high value, 1 >= c_0 >= (total_characters - num_characters_in_item)/total_characters """
+    """ c_1 is some high value, average_error >= c_0 >= min_error """
     """ mask [batches, total_characters, 1] """
 
     size = tf.shape(weights)
     batches = size[0]
     total_characters = size[1]
-    new_weights = tf.batch_matmul(shift, weights)
     y = tf.reshape(tf.one_hot(true_labels, depth=total_classes, dtype=tf.float32, axis=-1), [batches, total_characters, total_classes])
     z = tf.reshape(tf.nn.log_softmax(logits), [batches, 1, total_classes])
     mask = tf.select(tf.reshape(tf.greater(true_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
-    delta = tf.mul(mask, tf.mul(new_weights, -tf.mul(y, z)))
-    cost = tf.reduce_sum(delta) + tf.reduce_sum(1 - alphas) * c0
+    delta = tf.mul(mask, tf.mul(alphas, tf.mul(weights, -tf.mul(y, z))) + (1 - alphas) * c0 / tf.size(weights, out_type=tf.float32))
+    cost = tf.reduce_mean(delta)
+    new_weights = tf.batch_matmul(shift, weights)
     return new_weights, cost
 
 
@@ -70,13 +70,11 @@ class Network:
         self.gpu_inputs = tf.placeholder(tf.float32, [None, None, input_size])
         self.gpu_labels = tf.placeholder(tf.int32)
         self.sharpeness = tf.placeholder(tf.float32)
-        self.weights = tf.placeholder(tf.float32)
-        self.sum_cost = tf.placeholder(tf.float32)
 
         with tf.variable_scope("lstm"):
             lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size)
             self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
-            self.W = tf.Variable(np.random.rand(input_size, total_classes + 1) * 0.01, dtype=tf.float32)
+            self.W = tf.Variable((np.random.rand(input_size, total_classes + 1) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.gpu_inputs, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
             preAlphas, logits = split_output(final_layer(output, self.W, self.b, input_size, total_classes + 1), total_classes)
@@ -98,9 +96,9 @@ class Network:
         sum_cost = tf.constant(0, dtype=tf.float32)
         for i in range(input_sequence_length):
             logits_i = tf.reshape(tf.slice(logits, [0, i, 0], [-1, 1, total_classes]), [-1, total_classes])
-            alphas_i = tf.reshape(tf.slice(self.alphas, [0, i, 0], [-1, 1, 1]), [-1, 1])
+            alphas_i = tf.reshape(tf.slice(self.alphas, [0, i, 0], [-1, 1, 1]), [-1, 1, 1])
             shift_mat = build_shifting_graph(alphas_i, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
-            weights, cost = build_step_cost_function(1.0, shift_mat, alphas_i, weights, logits_i, self.gpu_labels, total_classes)
+            weights, cost = build_step_cost_function(0.003, shift_mat, alphas_i, weights, logits_i, self.gpu_labels, total_classes)
             sum_cost = sum_cost + cost
 
         self.overall_cost = sum_cost

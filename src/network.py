@@ -47,7 +47,7 @@ def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, to
     new_weights = tf.batch_matmul(shift, weights)
     y = tf.reshape(tf.one_hot(true_labels, depth=total_classes, dtype=tf.float32, axis=-1), [batches, total_characters, total_classes])
     z = tf.reshape(tf.nn.log_softmax(logits), [batches, 1, total_classes])
-    mask = tf.select(tf.greater(true_labels, 0), tf.ones([batches, total_characters, 1], dtype=tf.float32), tf.zeros([batches, total_characters, 1], dtype=tf.float32))
+    mask = tf.select(tf.reshape(tf.greater(true_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
     delta = tf.mul(mask, tf.mul(new_weights, -tf.mul(y, z)))
     cost = tf.reduce_sum(delta) + tf.reduce_sum(1 - alphas) * c0
     return new_weights, cost

@@ -89,8 +89,8 @@ class Network:
         shift[0, total_characters - 1] = 0
         shift[total_characters - 1, total_characters - 1] = 0
 
-        w = np.zeros((data_shape[0], total_characters, 1))
-        w[:, 0] = 1.0
+        w = np.ones((data_shape[0], total_characters, 1)) * 0.2 / total_characters
+        w[:, 0] = 0.8
         weights = tf.constant(w, dtype=tf.float32)
 
         sum_cost = tf.constant(0, dtype=tf.float32)

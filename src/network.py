@@ -72,7 +72,7 @@ class Network:
         self.sharpeness = tf.placeholder(tf.float32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size)
+            lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, forget_bias=0.0)
             self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
             self.W = tf.Variable((np.random.rand(input_size, total_classes + 1) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)

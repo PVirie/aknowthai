@@ -12,7 +12,7 @@ import numpy as np
 max_word_length_index = 0
 max_word_length = 0
 wordlist = []
-for file in os.listdir("../wordlists"):
+for file in sorted(os.listdir("../wordlists")):
     fullname = os.path.join("../wordlists", file)
     if file.endswith(".txt"):
         print "Reading:", fullname

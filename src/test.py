@@ -1,4 +1,4 @@
-import gen
+import gen_small as gen
 import network as ann
 import numpy as np
 import util
@@ -30,6 +30,6 @@ def eval(neural_net, data, labels):
 words, imgs = gen.get_tuples(range(10))
 word_mat, img_mat = gen.prepare_input_tensors(words, imgs)
 
-nn = ann.Network(img_mat.shape, word_mat.shape, gen.get_default_total_code())
+nn = ann.Network(img_mat.shape, word_mat.shape, gen.get_default_total_code(), 50)
 nn.load_session("test_weight")
 eval(nn, img_mat, word_mat)

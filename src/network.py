@@ -2,17 +2,17 @@ import tensorflow as tf
 import numpy as np
 
 
-def final_layer(lstm_output, w, b, input_size, output_size):
-    """ (batch, data_length, input_size) * (input_size, [one-hots, alpha]) -> (batch, data_length, [one-hots, alpha]) """
-    batches = tf.shape(lstm_output)[0]
-    return tf.reshape(tf.matmul(tf.reshape(lstm_output, [-1, input_size]), w), [batches, -1, output_size]) + b
+def linear_layer(x, w, b, input_size, output_size):
+    """ (batch, data_length, input_size) * (input_size, output_size) -> (batch, data_length, output_size) """
+    batches = tf.shape(x)[0]
+    return tf.reshape(tf.matmul(tf.reshape(x, [-1, input_size]), w), [batches, -1, output_size]) + b
 
 
 def split_output(final_output, total_classes):
     """ (batch, data_length, [one-hots, alpha]) ->  (batch, data_length, 1), (batch, data_length, one-hots)"""
     batches = tf.shape(final_output)[0]
-    alphas = tf.slice(final_output, [0, 0, total_classes], [batches, -1, 1])
-    logits = tf.slice(final_output, [0, 0, 0], [batches, -1, total_classes])
+    alphas = tf.slice(final_output, [0, 0, 0], [batches, -1, 1])
+    logits = tf.slice(final_output, [0, 0, 1], [batches, -1, total_classes])
     return alphas, logits
 
 
@@ -48,7 +48,7 @@ def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, to
     z = tf.reshape(tf.nn.log_softmax(logits), [batches, 1, total_classes])
     mask = tf.select(tf.reshape(tf.greater(true_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
     delta = tf.mul(mask, tf.mul(alphas, tf.mul(weights, -tf.mul(y, z))) + (1 - alphas) * c0 / tf.size(weights, out_type=tf.float32))
-    cost = tf.reduce_mean(delta)
+    cost = tf.reduce_sum(delta)
     new_weights = tf.batch_matmul(shift, weights)
     return new_weights, cost
 
@@ -62,7 +62,7 @@ def build_tailing_cost_function(c1, weights):
 
 class Network:
 
-    def __init__(self, data_shape, labels_shape, total_classes):
+    def __init__(self, data_shape, labels_shape, total_classes, lstm_size):
         self.sess = tf.Session()
         total_characters = labels_shape[1]
         input_size = data_shape[2]
@@ -72,12 +72,15 @@ class Network:
         self.sharpeness = tf.placeholder(tf.float32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.BasicLSTMCell(input_size, forget_bias=0.0)
+            lstm = tf.nn.rnn_cell.BasicLSTMCell(lstm_size, forget_bias=0.0)
+            self.U = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
+            self.c = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
             self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
-            self.W = tf.Variable((np.random.rand(input_size, total_classes + 1) - 0.5) * 0.01, dtype=tf.float32)
+            self.W = tf.Variable((np.random.rand(lstm_size, total_classes + 1) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)
-            output, state = tf.nn.dynamic_rnn(self.stacked_lstm, self.gpu_inputs, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
-            preAlphas, logits = split_output(final_layer(output, self.W, self.b, input_size, total_classes + 1), total_classes)
+            preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.U, self.c, input_size, lstm_size))
+            output, state = tf.nn.dynamic_rnn(self.stacked_lstm, preLSTM, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
+            preAlphas, logits = split_output(linear_layer(output, self.W, self.b, lstm_size, total_classes + 1), total_classes)
             self.alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
             self.classes = logit_to_label(logits)
 
@@ -127,10 +130,13 @@ class Network:
                 _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb, self.sharpeness: [1.0]})
                 sum_loss += loss
             print sum_loss / total_batches
+            if step % 100 == 0:
+                self.saver.save(self.sess, "../artifacts/" + session_name)
 
         self.saver.save(self.sess, "../artifacts/" + session_name)
 
     def load_session(self, session_name):
+        print "loading from last save..."
         self.saver.restore(self.sess, "../artifacts/" + session_name)
 
     def load_last(self):

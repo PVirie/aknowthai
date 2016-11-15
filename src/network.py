@@ -72,15 +72,13 @@ class Network:
         self.sharpeness = tf.placeholder(tf.float32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.BasicLSTMCell(lstm_size, forget_bias=0.0)
-            self.U = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
-            self.c = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
+            lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
+            self.W = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
+            self.b = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
             self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
-            self.W = tf.Variable((np.random.rand(lstm_size, total_classes + 1) - 0.5) * 0.01, dtype=tf.float32)
-            self.b = tf.Variable(np.zeros((total_classes + 1)), dtype=tf.float32)
-            preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.U, self.c, input_size, lstm_size))
+            preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.W, self.b, input_size, lstm_size))
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, preLSTM, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
-            preAlphas, logits = split_output(linear_layer(output, self.W, self.b, lstm_size, total_classes + 1), total_classes)
+            preAlphas, logits = split_output(output, total_classes)
             self.alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
             self.classes = logit_to_label(logits)
 
@@ -107,7 +105,7 @@ class Network:
         self.overall_cost = sum_cost
         # + build_tailing_cost_function(10000.0, weights)
 
-        self.training_op = tf.train.AdagradOptimizer(0.1).minimize(self.overall_cost, var_list=lstm_scope)
+        self.training_op = tf.train.AdagradOptimizer(0.05).minimize(self.overall_cost, var_list=lstm_scope)
 
         self.saver = tf.train.Saver(var_list=lstm_scope, keep_checkpoint_every_n_hours=1)
 

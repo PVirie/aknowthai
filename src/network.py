@@ -30,7 +30,7 @@ def build_shifting_graph(alphas, identity, shift_template):
     return identity + tf.mul(alphas, shift_template)
 
 
-def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, total_classes):
+def build_step_output(shift, alphas, weights, logits, total_classes):
     """ total_characters = true_character_number + 1, the last slot is for terminal penalty """
     """ true_labels of integer type can be expaned into [batches, total_characters, total_classes] via tf.one_hot """
     """ logits [batches, total_classes] """
@@ -39,31 +39,19 @@ def build_step_cost_function(c0, shift, alphas, weights, logits, true_labels, to
     """ shift [batches, total_characters, total_characters] """
     """ cost for each item in batch = \sum_i {c_0*(1-\alpha_i) + \alpha_i.prediction_error} + c_1*total_weight_at_last_step  """
     """ c_1 is some high value, average_error >= c_0 >= min_error """
-    """ mask [batches, total_characters, 1] """
-
     size = tf.shape(weights)
     batches = size[0]
-    total_characters = size[1]
-    y = tf.reshape(tf.one_hot(true_labels, depth=total_classes, dtype=tf.float32, axis=-1), [batches, total_characters, total_classes])
-    z = tf.reshape(tf.nn.log_softmax(logits), [batches, 1, total_classes])
-    mask = tf.select(tf.reshape(tf.greater(true_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
-    delta = tf.mul(mask, tf.mul(alphas, tf.mul(weights, -tf.mul(y, z))) + (1 - alphas) * c0 / tf.size(weights, out_type=tf.float32))
-    cost = tf.reduce_sum(delta)
+    z = tf.reshape(tf.nn.softmax(logits), [batches, 1, total_classes])
+    out = tf.mul(alphas, tf.mul(weights, z))
     new_weights = tf.batch_matmul(shift, weights)
-    return new_weights, cost
-
-
-def build_tailing_cost_function(c1, weights):
-    size = tf.shape(weights)
-    batches = size[0]
-    total_characters = size[1]
-    return tf.reduce_sum(tf.slice(weights, [0, total_characters - 1, 0], [batches, 1, 1])) * c1
+    return new_weights, out
 
 
 class Network:
 
     def __init__(self, data_shape, labels_shape, total_classes, lstm_size):
         self.sess = tf.Session()
+        total_batches = data_shape[0]
         total_characters = labels_shape[1]
         input_size = data_shape[2]
         input_sequence_length = data_shape[1]
@@ -92,23 +80,24 @@ class Network:
         shift[0, total_characters - 1] = 0
         shift[total_characters - 1, total_characters - 1] = 0
 
-        w = np.ones((data_shape[0], total_characters, 1)) * 0.2 / total_characters
+        w = np.ones((total_batches, total_characters, 1)) * 0.2 / total_characters
         w[:, 0] = 0.8
         weights = tf.constant(w, dtype=tf.float32)
 
-        sum_cost = tf.constant(0, dtype=tf.float32)
+        z = tf.zeros([total_batches, total_characters, total_classes], dtype=tf.float32)
         for i in range(input_sequence_length):
             logits_i = tf.reshape(tf.slice(logits, [0, i, 0], [-1, 1, total_classes]), [-1, total_classes])
             alphas_i = tf.reshape(tf.slice(self.alphas, [0, i, 0], [-1, 1, 1]), [-1, 1, 1])
             shift_mat = build_shifting_graph(alphas_i, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
-            weights, cost = build_step_cost_function(0.003, shift_mat, alphas_i, weights, logits_i, self.gpu_labels, total_classes)
-            sum_cost = sum_cost + cost
+            weights, out = build_step_output(shift_mat, alphas_i, weights, logits_i, total_classes)
+            z = z + out
+        y = tf.reshape(tf.one_hot(self.gpu_labels, depth=total_classes, dtype=tf.float32, axis=-1), [total_batches, total_characters, total_classes])
+        """ mask [batches, total_characters, 1] """
+        size = tf.shape(weights)
+        mask = tf.select(tf.reshape(tf.greater(self.gpu_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
+        self.overall_cost = tf.reduce_sum(tf.mul(mask, -tf.mul(y, tf.log(z))))
 
-        self.overall_cost = sum_cost
-        # + build_tailing_cost_function(10000.0, weights)
-
-        self.training_op = tf.train.AdagradOptimizer(0.1).minimize(self.overall_cost, var_list=lstm_scope)
-
+        self.training_op = tf.train.AdagradOptimizer(0.01).minimize(self.overall_cost, var_list=lstm_scope)
         self.saver = tf.train.Saver(var_list=lstm_scope, keep_checkpoint_every_n_hours=1)
 
         # Before starting, initialize the variables.  We will 'run' this first.

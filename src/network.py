@@ -27,22 +27,68 @@ def make_prob(preAlphas):
 
 
 def build_shifting_graph(alphas, identity, shift_template):
-    return identity + tf.mul(alphas, shift_template)
+    """ for both tensorflow and numpy tensors """
+    return identity + (alphas * shift_template)
 
 
-def build_step_output(shift, alphas, weights, logits, total_classes):
+def build_step_output(shift, alphas, weights, classes):
     """ total_characters = true_character_number + 1, the last slot is for terminal penalty """
     """ true_labels of integer type can be expaned into [batches, total_characters, total_classes] via tf.one_hot """
-    """ logits [batches, total_classes] """
+    """ classes [batches, 1, total_classes] """
     """ weights [batches, total_characters, 1] """
     """ alphas [batches, 1, 1]  """
     """ shift [batches, total_characters, total_characters] """
-    size = tf.shape(weights)
-    batches = size[0]
-    z = tf.reshape(tf.nn.softmax(logits), [batches, 1, total_classes])
-    out = tf.mul(alphas, tf.mul(weights, z))
+    out = tf.mul(alphas, tf.mul(weights, classes))
     new_weights = tf.batch_matmul(shift, weights)
     return new_weights, out
+
+
+def build_shift_identiy_weights(start_weight, total_batches, total_characters, total_classes):
+    r12340 = np.arange(1, total_characters + 1, 1, dtype=np.int32)
+    r12340[total_characters - 1] = 0
+    cpu_shift = -np.identity(total_characters) + np.identity(total_characters)[:, r12340]
+    cpu_shift[0, total_characters - 1] = 0
+    cpu_shift[total_characters - 1, total_characters - 1] = 0
+
+    cpu_identity = np.identity(total_characters)
+
+    cpu_weights = np.ones((total_batches, total_characters, 1)) * (1.0 - start_weight) / total_characters
+    cpu_weights[:, 0] = start_weight
+
+    return cpu_shift, cpu_identity, cpu_weights
+
+
+def gen_output(alphas, classes, start_weight, total_batches, total_characters, total_classes, input_sequence_length):
+
+    cpu_shift, cpu_identity, cpu_weights = build_shift_identiy_weights(start_weight, total_batches, total_characters, total_classes)
+    shift = tf.constant(cpu_shift, dtype=tf.float32)
+    identity = tf.constant(cpu_identity, dtype=tf.float32)
+    weights = tf.constant(cpu_weights, dtype=tf.float32)
+
+    z = tf.zeros([total_batches, total_characters, total_classes], dtype=tf.float32)
+    for i in range(input_sequence_length):
+        classes_i = tf.slice(classes, [0, i, 0], [-1, 1, total_classes])
+        alphas_i = tf.slice(alphas, [0, i, 0], [-1, 1, 1])
+        shift_mat = build_shifting_graph(alphas_i, identity, shift)
+        weights, out = build_step_output(shift_mat, alphas_i, weights, classes_i)
+        z = z + out
+    return z
+
+
+def gen_cpu_output(alphas, classes, start_weight, total_batches, total_classes, input_sequence_length):
+
+    cpu_shift, cpu_identity, weights = build_shift_identiy_weights(start_weight, total_batches, input_sequence_length, total_classes)
+
+    z = np.zeros((total_batches, input_sequence_length, total_classes), dtype=np.float32)
+    for i in range(input_sequence_length):
+        classes_i = classes[:, i:(i + 1), :]
+        alphas_i = alphas[:, i:(i + 1), :]
+        shift_mat = build_shifting_graph(alphas_i, cpu_identity, cpu_shift)
+
+        out = alphas_i * (weights * classes_i)
+        weights = np.matmul(shift_mat, weights)
+        z = z + out
+    return z
 
 
 class Network:
@@ -55,7 +101,6 @@ class Network:
         input_sequence_length = data_shape[1]
         self.gpu_inputs = tf.placeholder(tf.float32, [None, None, input_size])
         self.gpu_labels = tf.placeholder(tf.int32)
-        self.sharpeness = tf.placeholder(tf.float32)
 
         with tf.variable_scope("lstm"):
             lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
@@ -65,31 +110,14 @@ class Network:
             preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.W, self.b, input_size, lstm_size))
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, preLSTM, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
             preAlphas, logits = split_output(output, total_classes)
-            self.alphas = make_prob(tf.mul(preAlphas, self.sharpeness))
+            self.alphas = make_prob(preAlphas)
             self.classes = logit_to_label(logits)
 
         lstm_scope = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="lstm")
 
-        r12340 = np.arange(1, total_characters + 1, 1, dtype=np.int32)
-        r12340[total_characters - 1] = 0
-        shift = -np.identity(total_characters) + np.identity(total_characters)[:, r12340]
-        shift[0, total_characters - 1] = 0
-        shift[total_characters - 1, total_characters - 1] = 0
-
-        w = np.ones((total_batches, total_characters, 1)) * 0.05 / total_characters
-        w[:, 0] = 0.95
-        weights = tf.constant(w, dtype=tf.float32)
-
-        z = tf.zeros([total_batches, total_characters, total_classes], dtype=tf.float32)
-        for i in range(input_sequence_length):
-            logits_i = tf.reshape(tf.slice(logits, [0, i, 0], [-1, 1, total_classes]), [-1, total_classes])
-            alphas_i = tf.reshape(tf.slice(self.alphas, [0, i, 0], [-1, 1, 1]), [-1, 1, 1])
-            shift_mat = build_shifting_graph(alphas_i, tf.constant(np.identity(total_characters), dtype=tf.float32), tf.constant(shift, dtype=tf.float32))
-            weights, out = build_step_output(shift_mat, alphas_i, weights, logits_i, total_classes)
-            z = z + out
+        z = gen_output(self.alphas, self.classes, 0.8, total_batches, total_characters, total_classes, input_sequence_length)
         y = tf.reshape(tf.one_hot(self.gpu_labels, depth=total_classes, dtype=tf.float32, axis=-1), [total_batches, total_characters, total_classes])
-        """ mask [batches, total_characters, 1] """
-        size = tf.shape(weights)
+        size = [total_batches, total_characters, 1]
         mask = tf.select(tf.reshape(tf.greater(self.gpu_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
         self.overall_cost = tf.reduce_sum(tf.mul(mask, -tf.mul(y, tf.log(z))))
 
@@ -113,7 +141,7 @@ class Network:
             for b in xrange(total_batches):
                 db = data[(b * batch_size):((b + 1) * batch_size), ...]
                 lb = labels[(b * batch_size):((b + 1) * batch_size), ...]
-                _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb, self.sharpeness: [1.0]})
+                _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb})
                 sum_loss += loss
             print sum_loss / total_batches
             if step % 1000 == 0:
@@ -128,5 +156,7 @@ class Network:
     def load_last(self):
         self.saver.restore(self.sess, tf.train.latest_checkpoint("../artifacts/"))
 
-    def scan(self, data, labels):
-        return self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data, self.sharpeness: [1.0]})
+    def scan(self, data, total_classes):
+        classes, alphas = self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data})
+        out = gen_cpu_output(alphas, classes, 1.0, data.shape[0], total_classes, data.shape[1])
+        return out, alphas

@@ -2,6 +2,8 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
+"""We use PIL for representing images."""
+
 
 def image_to_numpy(img):
     return np.array(img) / 255.0
@@ -20,7 +22,7 @@ def image_to_invFC1(img):
 
 
 def numpy_to_image(mat):
-    return Image.fromarray(mat * 255.0, 'F')
+    return Image.fromarray(np.uint8(mat * 255))
 
 
 def plot_1D(mat):

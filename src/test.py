@@ -5,24 +5,19 @@ import util
 
 
 def eval(neural_net, data, labels):
-    classes, alphas = neural_net.scan(data, labels)
-    util.plot_1D(alphas[5])
-    print alphas[5]
+    classes, alphas = neural_net.scan(data)
+    # util.plot_1D(alphas[5])
+    # print alphas[5]
 
     # now get only classess corresponding to high alphas
     index_output = np.argmax(classes, axis=2)
-    masked = np.reshape(alphas > 0.5, (alphas.shape[0], alphas.shape[1]))
 
     count = 0
     correct = 0
-    for b in xrange(index_output.shape[0]):
-        lc = 0
-        for c in xrange(index_output.shape[1]):
-            if(masked[b, c]):
-                if(lc < labels.shape[1]):
-                    correct += 1 if labels[b, lc] == index_output[b, c] else 0
-                    lc += 1
-                count += 1
+    for b in xrange(labels.shape[0]):
+        for c in xrange(labels.shape[1]):
+            correct += 1 if labels[b, c] == index_output[b, c] else 0
+            count += 1
 
     print "Percent correct = ", correct * 100.0 / count
 

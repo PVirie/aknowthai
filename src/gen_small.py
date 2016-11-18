@@ -11,7 +11,7 @@ import numpy as np
 max_word_length_index = 0
 max_word_length = 0
 
-start_code = u"\u0E01"
+start_code = u"\u0E00"
 end_code = u"\u0E07"
 
 
@@ -23,7 +23,7 @@ def indices_to_unicode(indices, start=start_code, end=end_code):
 
 
 wordlist = []
-all_indices = itertools.permutations([0, 1, 3, 6])
+all_indices = itertools.permutations([1, 2, 4, 7])
 for indices in all_indices:
     word = indices_to_unicode(indices)
     print word

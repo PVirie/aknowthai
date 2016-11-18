@@ -37,8 +37,6 @@ def build_step_output(shift, alphas, weights, logits, total_classes):
     """ weights [batches, total_characters, 1] """
     """ alphas [batches, 1, 1]  """
     """ shift [batches, total_characters, total_characters] """
-    """ cost for each item in batch = \sum_i {c_0*(1-\alpha_i) + \alpha_i.prediction_error} + c_1*total_weight_at_last_step  """
-    """ c_1 is some high value, average_error >= c_0 >= min_error """
     size = tf.shape(weights)
     batches = size[0]
     z = tf.reshape(tf.nn.softmax(logits), [batches, 1, total_classes])
@@ -78,8 +76,8 @@ class Network:
         shift[0, total_characters - 1] = 0
         shift[total_characters - 1, total_characters - 1] = 0
 
-        w = np.ones((total_batches, total_characters, 1)) * 0.2 / total_characters
-        w[:, 0] = 0.8
+        w = np.ones((total_batches, total_characters, 1)) * 0.05 / total_characters
+        w[:, 0] = 0.95
         weights = tf.constant(w, dtype=tf.float32)
 
         z = tf.zeros([total_batches, total_characters, total_classes], dtype=tf.float32)
@@ -95,7 +93,8 @@ class Network:
         mask = tf.select(tf.reshape(tf.greater(self.gpu_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
         self.overall_cost = tf.reduce_sum(tf.mul(mask, -tf.mul(y, tf.log(z))))
 
-        self.training_op = tf.train.AdagradOptimizer(0.01).minimize(self.overall_cost, var_list=lstm_scope)
+        """ out of many algorithms, only Adam converge! A remarkable job for Kingma and Lei Ba!"""
+        self.training_op = tf.train.AdamOptimizer(0.01).minimize(self.overall_cost, var_list=lstm_scope)
         self.saver = tf.train.Saver(var_list=lstm_scope, keep_checkpoint_every_n_hours=1)
 
         # Before starting, initialize the variables.  We will 'run' this first.
@@ -117,7 +116,7 @@ class Network:
                 _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb, self.sharpeness: [1.0]})
                 sum_loss += loss
             print sum_loss / total_batches
-            if step % 100 == 0:
+            if step % 1000 == 0:
                 self.saver.save(self.sess, "../artifacts/" + session_name)
 
         self.saver.save(self.sess, "../artifacts/" + session_name)

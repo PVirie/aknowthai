@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from PIL import Image
 import matplotlib.pyplot as plt
 
@@ -27,4 +28,25 @@ def numpy_to_image(mat):
 
 def plot_1D(mat):
     plt.plot(xrange(mat.shape[0]), mat, 'ro')
+    plt.ion()
     plt.show()
+
+
+def cvtColorGrey2RGB(mat):
+    last_dim = len(mat.shape)
+    return np.repeat(np.expand_dims(mat, last_dim), 3, last_dim)
+
+
+def make_tile(mat, rows, cols, flip):
+    b = mat.shape[0]
+    r = mat.shape[2] if flip else mat.shape[1]
+    c = mat.shape[1] if flip else mat.shape[2]
+    canvas = np.zeros((rows, cols, 3 if len(mat.shape) > 3 else 1), dtype=mat.dtype)
+    step = int(max(1, math.floor(b * (r * c) / (rows * cols))))
+    i = 0
+    for x in xrange(int(math.floor(rows / r))):
+        for y in xrange(int(math.floor(cols / c))):
+            canvas[(x * r):((x + 1) * r), (y * c):((y + 1) * c), :] = np.transpose(mat[i, ...], (1, 0, 2)) if flip else mat[i, ...]
+            i = (i + step) % b
+
+    return canvas

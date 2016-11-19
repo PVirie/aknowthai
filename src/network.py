@@ -103,7 +103,7 @@ class Network:
         self.gpu_labels = tf.placeholder(tf.int32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
+            lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=0.5)
             self.W = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
             self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
@@ -115,14 +115,14 @@ class Network:
 
         lstm_scope = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="lstm")
 
-        z = gen_output(self.alphas, self.classes, 0.8, total_batches, total_characters, total_classes, input_sequence_length)
+        z = gen_output(self.alphas, self.classes, 0.95, total_batches, total_characters, total_classes, input_sequence_length)
         y = tf.reshape(tf.one_hot(self.gpu_labels, depth=total_classes, dtype=tf.float32, axis=-1), [total_batches, total_characters, total_classes])
         size = [total_batches, total_characters, 1]
         mask = tf.select(tf.reshape(tf.greater(self.gpu_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
         self.overall_cost = tf.reduce_sum(tf.mul(mask, -tf.mul(y, tf.log(z))))
 
         """ out of many algorithms, only Adam converge! A remarkable job for Kingma and Lei Ba!"""
-        self.training_op = tf.train.AdamOptimizer(0.01).minimize(self.overall_cost, var_list=lstm_scope)
+        self.training_op = tf.train.AdamOptimizer(0.001).minimize(self.overall_cost, var_list=lstm_scope)
         self.saver = tf.train.Saver(var_list=lstm_scope, keep_checkpoint_every_n_hours=1)
 
         # Before starting, initialize the variables.  We will 'run' this first.

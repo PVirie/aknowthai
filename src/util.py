@@ -50,3 +50,7 @@ def make_tile(mat, rows, cols, flip):
             i = (i + step) % b
 
     return canvas
+
+
+def save_txt(mat, name):
+    np.savetxt("../artifacts/" + name, mat, delimiter=",", fmt="%.2e")

@@ -103,10 +103,10 @@ class Network:
         self.gpu_labels = tf.placeholder(tf.int32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=0.5)
+            lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
             self.W = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
-            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
+            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 1)
             preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.W, self.b, input_size, lstm_size))
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, preLSTM, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
             preAlphas, logits = split_output(output, total_classes)

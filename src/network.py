@@ -145,16 +145,16 @@ class Network:
                 sum_loss += loss
             print sum_loss / total_batches
             if step % 1000 == 0:
-                self.saver.save(self.sess, "../artifacts/" + session_name)
+                self.saver.save(self.sess, session_name)
 
-        self.saver.save(self.sess, "../artifacts/" + session_name)
+        self.saver.save(self.sess, session_name)
 
     def load_session(self, session_name):
         print "loading from last save..."
-        self.saver.restore(self.sess, "../artifacts/" + session_name)
+        self.saver.restore(self.sess, session_name)
 
-    def load_last(self):
-        self.saver.restore(self.sess, tf.train.latest_checkpoint("../artifacts/"))
+    def load_last(self, directory):
+        self.saver.restore(self.sess, tf.train.latest_checkpoint(directory))
 
     def scan(self, data, total_classes):
         classes, alphas = self.sess.run((self.classes, self.alphas), feed_dict={self.gpu_inputs: data})

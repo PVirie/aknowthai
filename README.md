@@ -2,8 +2,10 @@
 
 
 Thai OCR with deep learning
-  - For neural network craze
-  - End-to-end training
+  - For neural network crazes
+  - End-to-end training 
+  		- only need images of characters and a list of characters in unicode
+  		- no need to provide stop marks or character cuts
   - with Accuracy
 
 ## Install Prerequisite
@@ -15,20 +17,19 @@ Thai OCR with deep learning
 
 ## Project structure
 
-1. run src/train.py to train
-2. run src/test.py to test
+1. run python src/train.py to train
+2. run python src/test.py to test
 
 
 ## New fonts
 
-1. Fix gen.py so that the print fits the images
-
+1. Edit gen.py so that the print fits the images
+	- Read the script.
 
 ## License 
 
 MIT
 
-
-**Free Software, Hell Yeah!**
+**That means free software.**
 
 

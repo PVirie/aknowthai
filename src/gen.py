@@ -33,6 +33,13 @@ start_code = u"\u0E00"
 end_code = u"\u0E7F"
 
 
+def indices_to_unicode(indices, start=start_code, end=end_code):
+    out = u""
+    for i in indices:
+        out = out + unichr(ord(start_code) + i)
+    return out + u" "
+
+
 def get_max_word_length():
     return max_word_length
 

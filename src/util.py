@@ -53,4 +53,4 @@ def make_tile(mat, rows, cols, flip):
 
 
 def save_txt(mat, name):
-    np.savetxt("../artifacts/" + name, mat, delimiter=",", fmt="%.2e")
+    np.savetxt(name, mat, delimiter=",", fmt="%.2e")

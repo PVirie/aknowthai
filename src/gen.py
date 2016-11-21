@@ -28,6 +28,7 @@ for i in xrange(len(wordlist)):
 print "total", len(wordlist), "words of maximum characters ", max_word_length
 font = ImageFont.truetype("../fonts/THSarabunNew Bold.ttf", 24)
 
+"""We won't use the first character; 0-th index is for empty character."""
 start_code = u"\u0E00"
 end_code = u"\u0E7F"
 
@@ -64,7 +65,7 @@ def random_tuple(index=randint(0, len(wordlist))):
     return (word, img, index)
 
 
-def get_tuples(indices=range(100)):
+def get_tuples(indices=range(len(wordlist))):
     """get lists of words, images"""
     words = []
     imgs = []

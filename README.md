@@ -1,6 +1,5 @@
 # **AKnowThai**
 
-
 Thai OCR with deep learning
   - For neural network crazes
   - End-to-end training 
@@ -25,6 +24,10 @@ Thai OCR with deep learning
 
 1. Edit gen.py so that the print fits the images
 	- Read the script.
+
+## More
+
+https://pvirie.wordpress.com/2016/11/23/a-challenge-to-test-neural-generative-attention/
 
 ## License 
 

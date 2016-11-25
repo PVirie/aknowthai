@@ -26,7 +26,12 @@ for i in xrange(len(wordlist)):
 
 
 print "total", len(wordlist), "words of maximum characters ", max_word_length
-font = ImageFont.truetype("../fonts/THSarabunNew Bold.ttf", 24)
+fonts = []
+for file in sorted(os.listdir("../fonts")):
+    fullname = os.path.join("../fonts", file)
+    if file.endswith(".ttf"):
+        print "Reading:", fullname
+        fonts.append(ImageFont.truetype(fullname, 24))
 
 """We won't use the first character; 0-th index is for empty character."""
 start_code = u"\u0E00"
@@ -60,11 +65,12 @@ def unicodes_to_indices(string_code, start=start_code, end=end_code):
     return out
 
 
-def random_tuple(index=randint(0, len(wordlist))):
+def random_tuple(index=randint(0, len(wordlist) - 1)):
     """get a (random if index is not given) tuple of (word, image, index)"""
     word = wordlist[index][:-1]
     img = Image.new("RGBA", (160, 30), (255, 255, 255))
     draw = ImageDraw.Draw(img)
+    font = fonts[randint(0, len(fonts) - 1)]
     ts = draw.textsize(u" " + word + u" ", font=font)
     # print ts
     draw.text(((160 - ts[0]) / 2, 0), u" " + word + u" ", (0, 0, 0), font=font)

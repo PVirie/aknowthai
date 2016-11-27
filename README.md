@@ -16,14 +16,14 @@ Thai OCR with deep learning
 
 ## Project structure
 
-1. run python src/train.py to train
-2. run python src/test.py to test
+1. Run python src/train.py to train.
+2. Run python src/test.py to test.
 
 
 ## New fonts
 
-1. Edit gen.py so that the print fits the images
-	- Read the script.
+1. Put new fonts under the "fonts" directory.
+	- If fonts have different spacing diversity, the model will be hard to converge. (Need to go deeper?)
 
 ## More
 

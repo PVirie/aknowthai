@@ -106,7 +106,7 @@ class Network:
             lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
             self.W = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
-            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 2)
+            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 1)
             preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.W, self.b, input_size, lstm_size))
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, preLSTM, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
             preAlphas, logits = split_output(output, total_classes)
@@ -144,7 +144,7 @@ class Network:
                 _, loss = self.sess.run((self.training_op, self.overall_cost), feed_dict={self.gpu_inputs: db, self.gpu_labels: lb})
                 sum_loss += loss
             print sum_loss / total_batches
-            if step % 1000 == 0:
+            if step % 100 == 0:
                 self.saver.save(self.sess, session_name)
 
         self.saver.save(self.sess, session_name)

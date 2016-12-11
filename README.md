@@ -7,7 +7,7 @@ Thai OCR with deep learning
   		- no need to provide stop marks or character cuts
   - with Accuracy
 
-## Install Prerequisite
+## Install prerequisites
 
 1. Python 2.7.x 
 2. Cuda Toolkit 8.0 (https://developer.nvidia.com/cuda-toolkit)

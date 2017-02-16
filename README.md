@@ -11,7 +11,7 @@ Thai OCR with deep learning
 
 1. Python 2.7.x 
 2. Cuda Toolkit 8.0 (https://developer.nvidia.com/cuda-toolkit)
-3. TensorFlow r0.11 (https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html#download-and-setup)
+3. TensorFlow r1.0 (https://www.tensorflow.org/install/)
 
 
 ## Project structure

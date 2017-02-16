@@ -38,8 +38,8 @@ def build_step_output(shift, alphas, weights, classes):
     """ weights [batches, total_characters, 1] """
     """ alphas [batches, 1, 1]  """
     """ shift [batches, total_characters, total_characters] """
-    out = tf.mul(alphas, tf.mul(weights, classes))
-    new_weights = tf.batch_matmul(shift, weights)
+    out = tf.multiply(alphas, tf.multiply(weights, classes))
+    new_weights = tf.matmul(shift, weights)
     return new_weights, out
 
 
@@ -103,10 +103,10 @@ class Network:
         self.gpu_labels = tf.placeholder(tf.int32)
 
         with tf.variable_scope("lstm"):
-            lstm = tf.nn.rnn_cell.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
+            lstm = tf.contrib.rnn.LSTMCell(lstm_size, num_proj=total_classes + 1, forget_bias=1.0)
             self.W = tf.Variable((np.random.rand(input_size, lstm_size) - 0.5) * 0.01, dtype=tf.float32)
             self.b = tf.Variable(np.zeros((lstm_size)), dtype=tf.float32)
-            self.stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm] * 1)
+            self.stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm] * 1)
             preLSTM = tf.tanh(linear_layer(self.gpu_inputs, self.W, self.b, input_size, lstm_size))
             output, state = tf.nn.dynamic_rnn(self.stacked_lstm, preLSTM, dtype=tf.float32, time_major=False, parallel_iterations=1, swap_memory=True)
             preAlphas, logits = split_output(output, total_classes)
@@ -118,15 +118,15 @@ class Network:
         z = gen_output(self.alphas, self.classes, 0.95, total_batches, total_characters, total_classes, input_sequence_length)
         y = tf.reshape(tf.one_hot(self.gpu_labels, depth=total_classes, dtype=tf.float32, axis=-1), [total_batches, total_characters, total_classes])
         size = [total_batches, total_characters, 1]
-        mask = tf.select(tf.reshape(tf.greater(self.gpu_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
-        self.overall_cost = tf.reduce_sum(tf.mul(mask, -tf.mul(y, tf.log(z))))
+        mask = tf.where(tf.reshape(tf.greater(self.gpu_labels, 0), size), tf.ones(size, dtype=tf.float32), tf.zeros(size, dtype=tf.float32))
+        self.overall_cost = tf.reduce_sum(tf.multiply(mask, -tf.multiply(y, tf.log(z))))
 
         """ out of many algorithms, only Adam converge! A remarkable job for Kingma and Lei Ba!"""
         self.training_op = tf.train.AdamOptimizer(0.001).minimize(self.overall_cost, var_list=lstm_scope)
         self.saver = tf.train.Saver(var_list=lstm_scope, keep_checkpoint_every_n_hours=1)
 
         # Before starting, initialize the variables.  We will 'run' this first.
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
 
         # Launch the graph.
         self.sess.run(init)
